@@ -1,0 +1,292 @@
+---
+title: "dust"
+author: "C. Nell"
+date: "7/23/2018"
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+    toc_depth: 4
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE, tidy=TRUE,error = TRUE, eval = TRUE, message = FALSE, warning = FALSE, rows.print=5, cols.min.print=4)
+```
+
+```{r Load preliminary packages, include=FALSE}
+library(dplyr) ## for data wrangling - %>% function
+library(reshape2) ##melt and cast data
+library(tidyr) # 'separate' function
+library(readxl) #read xlsx files into r on mac computer
+library(vegan) # dissimilarity matrix, permanova functions
+library(tidyverse)
+library(stringr)
+library(ggplot2) # plotting
+library(magrittr)
+library(cowplot)
+
+```
+### Logic   
+
+**Background:** Dust entering the Sierras comes from both regional and global sources -- and the contribution of each source changes over time. There is evidence that microbial communities can differ based on dust source and timing of dust deflation, and that this can have subsequent effects on endophytic associations (Caroline Frank’s work) and soil microbial communities at the deposition location. We therefore wanted to know:  
+  
+###**Q1. Do dust-associated microbial communities entering the Sierra Nevada differ across space and time?**   
+
+####Outputs:   
+####1. Determine the number of new OTUs identified at each site per sampling event  
+####2. NMDS of unweighted unifrac or jaccard dissimilarity. PERMANOVA with PERMDISP. 
+*Limitation: our time comparisons may be skewed because we did not sterilize collectors in between sampling events. Time points may appear more similar to each other than in reality. It’s also important to run on presence-absence data only; we don’t want to capture community differences that are driven by post-depositional divergence in relative abundances.*  
+
+```{r read in mapping data, include=FALSE}
+map6<-read.csv("data/SierraMap6.csv", header = TRUE, col.names =   c("SampleID","BarcodeSequence","LinkerPrimerSequence","Year","Month","SiteCode","RepNum","SiteRep","Site","Elevation","DateCode","DescName","Description"))
+
+```  
+
+#### Prepare data
+Split taxonomy column into multiple variables
+```{r}
+# bacteria otu
+B16S<-read.csv("data/filtered_table_w_metadata.csv", header = TRUE, stringsAsFactors = FALSE)
+
+# split taxa groupings into new columns
+source('dust_functions.R')
+B16S<-split_taxa(B16S)
+```  
+
+```{r separate taxonomy, include=FALSE, eval=FALSE}
+# extract the string between k__ and ; for the kingdoms
+B16S$kingdom<-str_match(B16S$taxonomy, "k__(.*?);")[,2] #regex
+
+# do the same for other taxa groupings 
+B16S$phylum<-str_match(B16S$taxonomy, "p__(.*?);")[,2]
+B16S$class<-str_match(B16S$taxonomy, "c__(.*?);")[,2]
+B16S$order<-str_match(B16S$taxonomy, "o__(.*?);")[,2]
+B16S$family<-str_match(B16S$taxonomy, "f__(.*?);")[,2]
+B16S$genus<-str_match(B16S$taxonomy, "g__(.*?);")[,2]
+B16S$species<-str_match(B16S$taxonomy, "s__(.*?)")[,2]
+
+```  
+  
+#### Read in UniFrac distances    
+UniFrac is a measure of B-diversity that uses phylogenetic information to compare community samples. Use with multivariate methods like principal coordinates (PCoA), NMDS, etc to explain differences among communities. Measured as the amount of evolutionary history that is unique to each group - the fraction of branch length in a phylogenetic tree associated with  ONLY the focal sample in pairwise comparison. With sequence data UniFrac values can be invfluencd by the number of sequences/sample and can use sequence jackknifing (Lozupone et al 2011. ISME).    
+Use to compare phylogenetic lineages between groups, to cluster samples. 
+```{r}
+unifrac<-read.table('data/unweighted_unifrac_dm.txt')
+unifrac_wt<-read.table('data/weighted_unifrac_dm.txt')
+
+```  
+Use heatmap to visualize sample dissimilarity based on UniFrac  
+```{r, fig.width=10, fig.height=4, echo=FALSE}
+## plot otu unifrac dissimilarities as heatmap
+# first melt df so there is a new row for every pairwise combo
+unifrac.melt<-unifrac%>%melt(variable.name='otu_1')%>%
+  mutate(otu_2 = rep.int(colnames(unifrac), times=length(colnames(unifrac))))
+
+# dark color indicates samples that were more similar to one another based on unifrac dissimilarity, blue = contains no similarities  
+##reorder axis so grouped by more similar samples
+heat.uni<-ggplot(data = unifrac.melt, aes(x = reorder(otu_1, value), y = reorder(otu_2, value)))+ 
+  geom_tile(aes(fill = value))+
+  scale_fill_gradient2(low = 'midnightblue', mid='deepskyblue3', high='yellow', midpoint = .5)+
+  theme(axis.text.x = element_text(angle=90),axis.text = element_text(size=9))+
+  labs(x='Sample', y='Sample', title='unweighted')
+
+# make the same plot for weighted unifrac, compare
+unifracwt.melt<-unifrac_wt%>%melt(variable.name='otu_1')%>%
+  mutate(otu_2 = rep.int(colnames(unifrac_wt), times=length(colnames(unifrac_wt))))
+
+heat.wt<-ggplot(data = unifracwt.melt, aes(x = reorder(otu_1, value), y = reorder(otu_2, value)))+ 
+  geom_tile(aes(fill = value))+
+  scale_fill_gradient2(low = 'midnightblue', mid='deepskyblue3', high='yellow', midpoint = .5)+
+  theme(axis.text.x = element_text(angle=90),axis.text = element_text(size=9))+
+  labs(x='Sample', y='Sample', title='weighted')
+
+plot_grid(heat.uni, heat.wt, nrow=1, ncol=2)
+## looks like weighting affects the similarity
+# communities are more similar overall with the weighted unifrac - relative abundance 
+# unweighted, most are 50% or more dissimilar. 
+```  
+
+```{r, include=FALSE, eval=FALSE}
+str(map6) #grouping variables 
+colnames(B16S) # community data
+
+otu.taxa<-B16S%>%dplyr::select(OTU=X.OTU.ID, kingdom:species)
+write.csv(otu.taxa, 'data/OTU_taxa_id.csv', row.names=FALSE)
+```
+
+```{r, eval=FALSE, include=FALSE}
+otu.melt<-B16S%>%select(-taxonomy:-species)%>%select(OTU = X.OTU.ID, everything())%>%
+  melt(id.vars=c('OTU'), variable.name='SampleID')
+
+# remove singletons and doubletons
+otu.melt$value_clean<-ifelse(otu.melt$value <= 2, NA, otu.melt$value)
+
+# community df
+otu.cast<-otu.melt%>%dcast(SampleID~OTU, value.var = 'value_clean')
+
+## remove otus that were dropped with singletons and doubletons
+otu.mat<-otu.cast[,-1]
+otu.new<-otu.mat[,colSums(otu.mat, na.rm=TRUE)> 0]
+otu.new<-otu.new%>%mutate(SampleID=otu.cast$SampleID)%>%select(SampleID, everything())
+
+write.csv(otu.new, 'data/OTU_community_clean.csv', row.names=FALSE)
+```
+
+#### Prep data for multivariate anaylsis    
+```{r}
+otu.taxa<-read.csv('data/OTU_taxa_id.csv') # otu ids
+otu.comm<-read.csv('data/OTU_community_clean.csv')
+
+#otu.grp<-otu.comm%>%left_join(map6, by='SampleID')
+```
+
+```{r}
+## the samples in the unifrq dist and community need to be in the same order
+# need to order community based on unifraq
+colnames(unifrac) # use this order
+# make new df based on unifraq
+otu.ordered<-data.frame(SampleID = colnames(unifrac))%>%left_join(otu.comm, by='SampleID')
+otu.ordered$SampleID
+# this works but is inefficient - there are multiple copies of the otu table which is large
+
+# alternatively - match the order, rewrite over same name
+otu.comm<-otu.comm[match(colnames(unifrac), otu.comm$SampleID),]
+# this says - for the community df, order the rows to match the order of the column names in unifrac, that match to SampleID
+rm(otu.ordered)
+
+```  
+
+```{r}
+#combine with grouping variables - align mapping data with community data
+otu.grp<-otu.comm%>%left_join(map6, by='SampleID')
+
+#instead of making our df larger, can reorder mapping data to community like above
+grps<-map6[match(colnames(unifrac), map6$SampleID),]
+grps$SampleID
+
+# now that all the data (community, distances, grouping variables) are ordered the same, we can use permanova etc
+```  
+#### Permanova  
+Permanova tests for differences in composition among groups  
+Reminder - permanova is always based on pairwise distances/dissimilarities.  
+```{r permanova test}
+set.seed(304)
+
+#unifrac distances
+ad.uni<-adonis2(unifrac~Month+Year+Elevation, data=grps, permutations=1000, strata='Year')
+ad.uni
+
+#unifrac distances weighted by relative abundance
+ad.uniwt<-adonis2(unifrac_wt~Month+Year+Elevation, data=grps, permutations=1000)
+ad.uniwt
+
+## are the results the same with other (non evolutionary) dissimiarlity indices?
+dist.j<-vegdist(otu.comm[,-1], method='jaccard', na.rm=TRUE)
+dist.bc<-vegdist(otu.comm[,-1], method='bray', na.rm=TRUE)
+
+ad.bc<-adonis2(dist.bc~Month+Year+Elevation, data=grps, permutations=1000, strata='Year')
+ad.bc
+
+ad.j<-adonis2(dist.j~Month+Year+Elevation, data=grps, permutations=1000)
+ad.j
+
+```  
+Month and elevation are significant in all tests. Year is not but that is probably because month is nested within year and that is not indicated in the model. 
+
+**Include Year in model appropriately**  Or alternatively, if not interested in Year effect, constrain permutations within Year using 'strata'  
+**Manipulate code for test of interest** 
+
+#### NMDS  
+The NMDS often pairs well with the PERMANOVA because both are more robust to properties of community data. To gain proper fit may need to try multiple dissimilarity methods or tranformations.   
+```{r configure nmds}
+#metaMDS can take communty data or dissimilarities
+mds.uni<-metaMDS(unifrac, k=2, autotransform=FALSE)
+mds.uniwt<-metaMDS(unifrac_wt, k=2, autotransform=FALSE)
+
+stressplot(mds.uni)
+stressplot(mds.uniwt)
+
+## both have good stress(below .15)
+```
+Plot ordination  
+```{r nmds plot df}
+# get NMDS scores for each SampleID
+scores(mds.uni) # scores are returned for each sampleid as a row, collapses dissimilarity data into 2 dimensions
+
+nmds.uni<-data.frame(scores(mds.uni))
+rownames(nmds.uni) # match the rows with the grouping data for plotting
+
+nmds.uni<-nmds.uni[match(grps$SampleID,rownames(nmds.uni)),]%>%cbind(grps) # then add that df, left_join would have similar effect
+head(nmds.uni)
+
+#weighted unifrac
+nmds.uniwt<-data.frame(scores(mds.uniwt))
+nmds.uniwt<-nmds.uniwt[match(grps$SampleID,rownames(nmds.uniwt)),]%>%cbind(grps)
+```
+```{r plot nmds}
+ggplot(nmds.uni, aes(NMDS1, NMDS2))+
+  geom_point(aes(color=Elevation, shape=Month))
+```
+**Manipulate plot code to make figure as desired**  
+
+```{r}
+ggplot(nmds.uni, aes(NMDS1, NMDS2))+
+  geom_point(aes(color=Elevation, shape=Site), size=3)+
+  scale_color_gradient2(low='turquoise', mid='yellow', high='red', midpoint=1500)
+
+ggplot(nmds.uniwt, aes(NMDS1, NMDS2))+
+  geom_point(aes(color=Elevation, shape=Site), size=3)+
+  scale_color_gradient2(low='turquoise', mid='yellow', high='red', midpoint=1500)
+```
+Separates well by elevation/site, within each elevation the months are grouped together for the most part.  
+
+####NMDS vs PCoA  
+NMDS is an unconstrained ordination method to visualize multivariate data in fewer dimensions. Depending on the properties of your data and your questions, different methods of ordination may be appropriate. PCoA (or MDS) is a metric version of NMDS, meaning that PCoA is a Euclidean representation of dissimilarities. So, like NMDS PCoA uses dissimilarities, but it is euclidean rather than rank-order which is used to preserve distances hierarchically. NMDS and distance-based ordinations/tests are often easier to use with community data because 0's and 1's, rare species are common and do not configure in euclidean space. 
+
+In general, ordination & multivaraite methods are defined by (1) whether or not using dissimilarity, (2) whether or not euclidean, (3) test for differences vs explaining differences  ...  
+
+PCoA, like PCA, returns a set of orthogonal axes with associated eignevalues that measure their importance. PCoA and PCA should produce the same results if the PCA is calculated on a covariance matrix with scaling of 1. 
+
+```{r}
+#PCoA - unconstrained, euclidean
+pcoa.uni<-capscale(unifrac~1,data=grps)
+head(summary(pcoa.uni))
+
+pcoa.df<-data.frame(scores(pcoa.uni, display='sites'))
+pcoa.df# site scores correspond to the SampleID
+
+# bind with grouping data, in order
+pcoa.df<-pcoa.df[match(grps$SampleID,rownames(pcoa.df)),]%>%cbind(grps)
+
+
+```  
+**plot the pcoa** 
+
+```{r}
+##dbrda
+#pcoa.uni<-capscale(unifrac~Elevation+Month,data=grps)
+
+```
+
+###**Q2. If differences exist, are there particular taxa that contribute disproportionately to those differences?**    
+*Note: Can’t run any analyses that rely on relative abundance data (e.g., simper), Address using absence-presence data*   
+  
+#### Outputs:  
+
+####1. Indicator species analysis to identify taxon-habitat association patterns.  
+This procedure identifies OTUs as indicator species independently from their abundance in the total data set. 
+####Steps (from https://www.nature.com/articles/ismej2015238):   
+
+  a. single- and doubleton OTUs are removed as they hold little indicator informationusing the multipatt function (number of permutations=9999) implemented in the indicspecies R package (De Cáceres et al., 2010). 
+  b. To account for multiple testing, P-values were corrected by calculating false discovery rates (q-values) with the q-value function implemented in the BiocLite R package (Dabney and Storney, 2014). Indicator OTUs with q<0.05 were considered significant. 
+  c. Indicator taxa were represented in bipartite networks by using the edge-weighted spring embedded algorithm layout implemented in Cytoscape v.3.0.2 (Shannon et al., 2003) where point biserial correlation values, a measure of species–habitat association, were used to weight the edges between nodes constituting the habitats and indicator OTUs (Hartmann et al., 2015). 
+  d. We further mapped these indicator OTUs on taxonomic networks generated in Cytoscape v.3.0.2 to investigate potential taxa–habitat associations (Hartmann et al., 2015). I
+  e. Indicator OTUs classified at the genus level were displayed in a taxonomic tree generated in iTOL (Letunic and Bork, 2011) together with the positive point biserial correlation values associated with each habitat.  
+  f. To find patterns of co-occurrence among OTUs characteristic of the habitats studied, we analysed correlations among the relative abundances of all indicator OTUs (co-correlations) by calculating Spearman rank correlation values (Spearman, 1904) in R with the function corr.test implemented in the package psych. Multiple testing was accounted for by correcting P-values with a false discovery rates of 5% (q-value<0.05).  
+  g. Bacterial and fungal indicator OTUs that were significantly co-correlated were displayed in networks with the edge-weighted spring embedded algorithm layout implemented in Cytoscape where Spearman correlation values were used to weight the edges between the nodes representing the OTUs (Hartmann et al., 2015).”   
+
+
+###**Q3. Can the observed variation in XXX be explained by provenance? By nutrient composition?**
+####Outputs: 
+####1. Multiple regression on distance matrix  
+
