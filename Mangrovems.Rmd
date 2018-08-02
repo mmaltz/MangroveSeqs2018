@@ -1,7 +1,7 @@
 ---
-title: "dust"
-author: "C. Nell"
-date: "7/23/2018"
+title: "Mangrove"
+author: "M. Maltz"
+date: "8/02/2018"
 output: 
   html_document:
     toc: TRUE
@@ -28,18 +28,19 @@ library(cowplot)
 ```
 ### Logic   
 
-**Background:** Dust entering the Sierras comes from both regional and global sources -- and the contribution of each source changes over time. There is evidence that microbial communities can differ based on dust source and timing of dust deflation, and that this can have subsequent effects on endophytic associations (Caroline Frank’s work) and soil microbial communities at the deposition location. We therefore wanted to know:  
+**Background:** Mangrove forests, pantropical coastal wetland ecosystems, provide important ecosystem services including fisheries nursery habitat provision, coastline protection, nutrient cycling, and other local benefits.  Of global import is their ability to store carbon in organic peat belowground for hundreds to thousands of years, with more carbon per unit area than any other forest type.  Mangrove carbon storage relies in part on the high primary productivity of these systems, but essential to the large and long-lived nature of this storage is the slow microbial decomposition of buried mangrove peat.  In this study, we explore the relationship between carbon content and microbial community composition with sediment age and plot the slow course of buried mangrove detritus over time.  At four mangrove sites with deep (< 1 m) deposits of peat in the area of La Paz, B.C.S., Mexico, we cored the sediments until rejection with a Russian peat corer, and from these cores obtained 5 cm samples at 20 cm intervals.  In these samples we measured total carbon, organic carbon, nitrogen, and 14C age.  We observed high percentage carbon by mass (14 ± 6%) and high C:N ratios (29 ± 7) in peat samples.  Radiocarbon dates allowed us to reconstruct the accumulation and slow decomposition of organic matter over the last 5,000 years.  Limitations on microbial decomposition by microbes, likely help explain this slow decomposition.  [Summary of microbial results.]  These results shed light on the microbial environment in which these peat deposits are preserved for long periods of time.  Future work should examine the roles of distinct microbial taxa in the slow turnover of mangrove carbon.  Mangrove forests, long considered detritus-based ecosystems, can only be understood when these belowground carbon cycling processes are captured.  Furthermore, data on patterns of belowground carbon in these threatened systems can motivate their conservation, given the value of their ecosystem service of carbon storage, estimated to be worth on the order of 1 billion US$ in the Gulf of California's mangroves alone.   
   
-###**Q1. Do dust-associated microbial communities entering the Sierra Nevada differ across space and time?**   
+###**Q1. Does sediment from deeper, older peat samples  contain lower concentrations of organic carbon and enrichment in δ13C due to microbial consumption over time.  
+
+###**Q2. Will peat age be correlated with a shift in the microbial community toward taxa that can consume this refractory remaining carbon and away from the community composition near the sediment surface with greater affinity to marine and terrestrial soil communities.**   
 
 ####Outputs:   
-####1. Determine the number of new OTUs identified at each site per sampling event  
+####1. Determine the number of new OTUs identified at each depth per sampling event  
 ####2. NMDS of unweighted unifrac or jaccard dissimilarity. PERMANOVA with PERMDISP. 
-*Limitation: our time comparisons may be skewed because we did not sterilize collectors in between sampling events. Time points may appear more similar to each other than in reality. It’s also important to run on presence-absence data only; we don’t want to capture community differences that are driven by post-depositional divergence in relative abundances.*  
+
 
 ```{r read in mapping data, include=FALSE}
-map6<-read.csv("data/SierraMap6.csv", header = TRUE, col.names =   c("SampleID","BarcodeSequence","LinkerPrimerSequence","Year","Month","SiteCode","RepNum","SiteRep","Site","Elevation","DateCode","DescName","Description"))
-
+map6<-read.csv("data/LapazMeta.csv", header = TRUE, col.names =   c("SampleID","BarcodeSequence","LinkerPrimerSequence","Core","PlotName","DepthBottom","MCDescriptor","Carbon","C13org","CODensity","CAPmp","CAPold","CAPyoung","DepthTop","Descriptor","Modifier","Ndensity","BulkDensity","Description"))
 ```  
 
 #### Prepare data
